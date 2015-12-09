@@ -1,0 +1,17 @@
+;; The first three lines of this file were inserted by DrRacket. They record metadata
+;; about the language level of this file in a form that our tools can easily process.
+#reader(lib "htdp-beginner-reader.ss" "lang")((modname ReaderTester) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
+(require 2htdp/batch-io)
+(define beatmap (read-words/line "beatmaps/testmap.txt"))
+
+;Takes a list of lists of strings
+;Returns a new list of lists of strings that has everything after "[moo]"
+;The list will never be empty, so don't worry about that
+(define (trimMap map)
+  (cond
+    [(string=? (first (first map)) "[moo]") (trimMap (rest map))];If it's not [moo], return the rest of the list into the function and keep trimming
+    [else (rest map)];If it's [moo], we r home free and return the rest of the list. no more trim
+    )
+)
+
+(trimMap beatmap)

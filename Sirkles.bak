@@ -1,0 +1,316 @@
+;; The first three lines of this file were inserted by DrRacket. They record metadata
+;; about the language level of this file in a form that our tools can easily process.
+#reader(lib "htdp-advanced-reader.ss" "lang")((modname Sirkles) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #t #t none #f () #f)))
+(require rsound)
+(require 2htdp/image)
+(require 2htdp/universe)
+(require 2htdp/batch-io)
+(require racket/string)
+
+;Framerate
+(define fr 44100)
+
+;Takes milliseconds
+;returns them as frames
+(define (ms->frames ms)
+  (* (* ms .001) fr)
+  )
+
+(define (both a b)
+  b)
+
+;Seconds conversion
+(define (s n)
+(* n fr))
+
+;Canvas x and y
+(define length1 1024)
+(define height1 768)
+
+;Ratio for Osu beatmaps to our beatmaps
+(define xRatio 1.75)
+(define yRatio 1.75)
+
+;Define the Canvas
+(define SCENE (empty-scene length1 height1 "black"))
+
+;timingLenience (milliseconds -> frames)
+(define timingLenience 11025)
+;1653.75
+
+;Score is a number
+(define initialScore 0)
+
+;The amount of score added per circle hit
+(define scoreInc 100)
+
+;Circle radius
+(define cRad 100)
+
+;The key being tapped to hit circles
+(define key1 "z")
+(define key2 "x")
+
+;Hitsound
+(define hitSound (rs-scale .5 (rs-read "effectSounds/hitSound.wav")))
+(define missSound (rs-scale .5 (rs-read "effectSounds/comboBreak.wav")))
+
+;Song
+(define song1 (rs-read "beatmaps/map1.wav"))
+(define song2 (rs-read "beatmaps/map2.wav"))
+(define song3 (rs-read "beatmaps/map3.wav"))
+(define song4 (rs-read "beatmaps/map4.wav"))
+
+;Cursor
+(define cursor (bitmap/file "graphics/cursor.png"))
+                       
+;Cursor x and y coords
+(define (cursorX w)
+  (- (posn-x (world-posn w)) (/ (image-width cursor) 2)))
+(define (cursorY w)
+  (- (posn-y (world-posn w)) (/ (image-height cursor) 2)))
+
+;scaleCircle ;You guys are going to kill me for putting this up here
+;Takes a hitcircle image graphic ;the radius is half the width
+;scales it to the circle radius cRad
+(define (scaleCircle img)
+  (scale
+   (/ cRad (/ (image-width img) 2))
+   img)
+)
+
+;Rate of approach; the parameter is in ms
+(define approachRate (s (* .001 600)))
+
+;Hitcircle graphic
+(define hitcircle (scaleCircle (bitmap/file "graphics/hitcircle.png")))
+
+;Pen for approach circle
+(define pen1 (make-pen (color 75 75 210 204) 5 "solid" "round" "round"))
+
+;Background
+(define background (bitmap/file "graphics/background.png"))
+
+;img x and y coords
+(define (imgX img)
+  (/ (image-width img) 2))
+(define (imgY img)
+  (/ (image-height img) 2))
+
+;Notes are structures with Time and Location
+;Time is a number in frames
+;Location is a posn
+(define-struct note [time location])
+
+;Beatmaps are lists of note structures
+;(define beatmap (list note note note ... '()))
+(define untrimmedBeatmap (read-words/line "beatmaps/map4.txt"));Import beatmap text
+
+;Takes a list of lists of strings
+;Returns a new list of lists of strings that has everything after "[HitObjects]"
+;Should never reach the end of a beatmap and see an empty there
+(define (trimMap map)
+  (cond
+    [(empty? (first map)) (trimMap (rest map))];Take out any empties that come our way
+    [(string=? (first (first map)) "[HitObjects]") (rest map)];If it's [HitObjects], we r home free and return the rest of the list. no more trim
+    [else (trimMap (rest map))];If it's not [HitObjects], return the rest of the list into the function and keep trimming
+    )
+)
+
+(define trimmedBeatmap (trimMap untrimmedBeatmap));Trim the beatmap
+
+(define splicedBeatmap (map (lambda (str) (string-split (first str) #px",")) trimmedBeatmap)) ;Splice into sections by commas
+
+;Takes a list of 3 numbers
+;Puts them into a note structure
+(define (noteMapper list)
+  (make-note (ms->frames (string->number (third list))) (make-posn (string->number (first list)) (string->number (second list))))
+  )
+
+;Takes a note and creates a new note after changing the location based on the ratios
+;note->note
+(define (changeRatio n)
+  (make-note (note-time n) (make-posn (* xRatio (posn-x (note-location n))) (* yRatio (posn-y (note-location n))))))
+
+;Takes a filepath
+;Returns a beatmap
+(define (makeMap filepath)
+  (map changeRatio
+       (map noteMapper
+            (map (lambda (str) (string-split (first str) #px","))
+                 (trimMap filepath)))))
+
+
+;Creating the beatmap for the world
+(define currentBeatmap (makeMap untrimmedBeatmap));Map to a list of notes
+
+;World holds:
+;state (menu or game)
+;(Current) MouseX, MouseY
+;Total score
+;Dynamic beatmap, altered by on-tick
+(define-struct world (state posn score beatmap))
+(define w1 (make-world 0 (make-posn 0 0) 0 currentBeatmap)) ;initialize world
+
+; DRAWHANDLER
+(define (drawHandler w)
+  (cond
+    [(= (world-state w) 0) (drawhandler0 w)]
+    [(= (world-state w) 1) (drawhandler1 w)]
+    ))
+
+(define (drawhandler0 w)
+  (place-images
+     (list (text "SiRkLeS" 50 "white") (text "Press Z or X to start" 30 "white"))
+     (list (make-posn (/ length1 2) (/ height1 2)) (make-posn (/ length1 2) (+ 100 (/ height1 2))))
+     SCENE))
+
+(define (drawhandler1 w)
+  (place-images
+   (list cursor (text (number->string (world-score w)) 20 "white"))
+   (list (world-posn w) (make-posn (- length1 25) 25))
+   (overlay (render (world-beatmap w)) background)))    
+
+;SEARCHER
+;Check values of list starting from index 0
+;Takes a list and a starting index
+;If value is “close enough”
+    ;Add to new list
+;else don’t add to new list
+        ;efficiency: If last item was added, and the next item is not to be, end function
+(define (searcher beatmap)
+  (cond
+        [(empty? beatmap) '()];Ayyyy fixed the crashes. Still stops at the end, but not a crash
+        [(not (< (- (note-time (first beatmap)) (pstream-current-frame ps)) approachRate)) '()]
+        [else (cons (first beatmap) (searcher (rest beatmap)))]))
+
+;noOfCircles
+; Number -> List
+; takes length of a list, and makes a number of identical circles equal to the length of the list
+(define (noOfCircles n)
+  (cond [(= 0 n) '()]
+        [else (cons hitcircle (noOfCircles (sub1 n)))]))
+
+;approachCircles
+;List -> List
+;takes list of notes and creates a list approach circles for notes
+(define (approachCircles beatmap)
+  (cond
+    [(empty? beatmap) '()]
+    [else (cons (circle
+                 (+ cRad (* cRad (/ (+ (- (note-time (first beatmap)) (pstream-current-frame ps))) approachRate)))
+                 "outline" pen1) (approachCircles (rest beatmap)))]))
+
+
+;RENDER HELPER
+;List -> image  
+;Takes a list of things to render  
+;Renders them on a scene
+; renders note circle and approach ring: radius of ring decreases based on time before note
+; should be hit
+(define (render beatmap)
+  (local [(define x (searcher beatmap)) (define y (map note-location x))]
+    (place-images (append (noOfCircles (length x)) (approachCircles x))
+                (append y y)
+                background)))
+
+
+
+;MOUSE HANDLER
+;Returns the world with updated x and y coordinates
+(define (mouseHandler w mx my event) ;event is essentially ignored since we’re looking at keys
+(cond
+  [(and (string=? "button-down" event) (inLeniency? (first (world-beatmap w)))) ;Is the nearest note within leniency? 
+        (inCircle? w (first (world-beatmap w)))] 
+  [else (make-world (world-state w) (make-posn mx my) (world-score w) (world-beatmap w))]
+)
+)
+
+;KEYHANDLER
+;Checks for correct key, if the circle is in leniency, and if the cursor is in the circle
+(define (keyHandler w k) ;ADD CHECK FOR CORRECT KEY; ADD CHECKS TO PREVENT HOLDING DOWN KEYS; ADD EMPTY MAP CASE
+    (cond
+    [(and (correctKey? w k) (= (world-state w) 0))
+     (make-world 1 (world-posn w) (world-score w) (addDelay (world-beatmap w)))]
+    [(and (correctKey? w k) (inLeniency? (first (world-beatmap w)))) ;Is the nearest note within leniency? 
+        (inCircle? w (first (world-beatmap w)))] ;Is the cursor in the circle? (+pts if yes)
+    [else w]
+    )
+)
+
+;Queues the song and alters the beatmap to reflect time spent in the menu
+(define (addDelay beatmap)
+  (cond
+    [(empty? beatmap) (both (pstream-queue ps song4 (pstream-current-frame ps)) '())]
+    [else (cons
+           (make-note
+            (+ (pstream-current-frame ps) (note-time (first beatmap)))
+            (note-location (first beatmap)))
+           (addDelay (rest beatmap)))]))
+
+;Get the distance of a note to a current distance
+(define (getNoteDistance note)
+(abs (- (pstream-current-frame ps) (note-time note)))
+)
+
+;Check if a note is within the current range
+(define (inLeniency? note)
+    (<= (getNoteDistance note) timingLenience)    
+)
+
+;Check if the correct key was pressed
+(define (correctKey? w k)
+  (cond
+    [(or (string=? key1 k) (string=? key2 k)) true]
+    [else false]
+   )
+)
+
+;andQueue instead of andplay
+(define (andQueue rs w)
+  (both (pstream-queue ps1 rs (+ 1000 (pstream-current-frame ps1))) w))
+;KEY HELPER - Check if mouse is in circle
+;Takes a world, note
+;Returns a world with added score if the mouse is in the circle
+(define (inCircle? w note)
+   (cond 
+     [(<= (distance (world-posn w) (note-location note)) cRad)
+      (andQueue hitSound (make-world (world-state w) (world-posn w) (+ (world-score w) scoreInc) (rest (world-beatmap w))))] ;Yep, it’s inside. Give points!; remove the circle hit
+     [else (andQueue missSound (make-world (world-state w) (world-posn w) (world-score w) (rest (world-beatmap w))))] ;Nope, the player sucks. No points!
+))
+
+;Computes a distance between two positions
+(define (distance posn1 posn2)
+    (sqrt (+ (sqr (- (posn-x posn2) (posn-x posn1))) (sqr (- (posn-y posn2) (posn-y posn1)))))
+)
+
+;TICK HELPER
+;Checks if given note has been past already
+;returns true if the note has past
+;note->boolean
+(define (hasPast n)
+  (> (pstream-current-frame ps) (+ (note-time n) timingLenience)))
+;Tick HANDLER
+;Takes in the world and updates the beatmap by removing notes that have already played
+;world->world
+(define (tickHandler w)
+  (cond
+    [(hasPast (first (world-beatmap w)))
+     (make-world (world-state w) (world-posn w) (world-score w) (rest (world-beatmap w)))]
+    [else w]))
+
+
+;returns true if the current world's beatmap is empty
+(define (beatMapEmpty? w)
+  (empty? (world-beatmap w)))
+
+(define ps (make-pstream))
+(define ps1 (make-pstream))
+(big-bang w1
+[stop-when beatMapEmpty?]
+[on-tick tickHandler] ;Truncates the beatmap
+[on-mouse mouseHandler] ;Gives the world the new mouse coordinates
+[on-key keyHandler] ;Either adds score or does nothing
+[to-draw drawHandler] ;Draws circles and score
+)
+

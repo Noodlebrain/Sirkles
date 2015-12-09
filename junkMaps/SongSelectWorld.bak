@@ -1,0 +1,29 @@
+;; The first three lines of this file were inserted by DrRacket. They record metadata
+;; about the language level of this file in a form that our tools can easily process.
+#reader(lib "htdp-intermediate-reader.ss" "lang")((modname SongSelectWorld) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
+;Region contains two sets of coordinates where
+;x1, y1, x2, y2
+;x1 <= x2 && y1 <= y2
+(define-struct region (x1 y1 x2 y2))
+;Could also use posns I guess...
+
+;Button contains
+;A region
+;A world to return
+(define-struct button (region world))
+
+;World contains
+;Signature saying type of world DON'T NEED - CHECK STRUCTURE TYPE INSTEAD
+;mouseX and mouseY
+;list of buttons (1 for back, 4 for beatmaps for now)
+(define-struct selectWorld (posn listOfButtons))
+
+;MouseHandler
+;Movement -> world with updated mouse position
+;Click -> check
+
+;inButton?
+;Takes a posn
+;Returns a button
+
+;DrawHandler
