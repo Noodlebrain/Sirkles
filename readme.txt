@@ -1,6 +1,6 @@
 SIRKLES is a rhythm game controlled by
 mouse and keyboard. There are pieces of background music. Users are
-taksed with tapping the circles appearing on the screen, which
+tasked with tapping the circles appearing on the screen, which
 roughly follow the rhythm of the background music. The game
 provides four levels based on difficulties. Each level has different
 background music and different numbers of circles. More circles
